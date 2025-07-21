@@ -5,7 +5,7 @@ from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.decorators import authentication_classes,permission_classes 
 from rest_framework.authentication import TokenAuthentication
-from rest_framework.permissions import IsAdminUser,IsAuthenticated
+from rest_framework.permissions import IsAdminUser,IsAuthenticated,IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
@@ -235,8 +235,10 @@ class DepartmentView(APIView):
 
 
 class SubjectListView(APIView):
+
     authentication_classes=[TokenAuthentication]
     permission_classes=[IsAdminUser]
+
     def get(self,request):
         user=SubjectList.objects.all()
         serializer_data=SubjectListSerializer(user,many=True).data
@@ -322,6 +324,7 @@ class SemesterView(APIView):
 #### CRUD FOR Assignment ###
 
 class AssignmentView(APIView):
+
     authentication_classes=[TokenAuthentication]
     permission_classes=[IsAuthenticated]
     
@@ -358,6 +361,8 @@ class AssignmentView(APIView):
     def delete(self,request):
         data=request.data
         Assignment_id=data.get('Assignment_id')
+        if request.user.role != 'faculty':
+            return Response({'message':'You do not have permission to perform this action'},status=status.HTTP_401_UNAUTHORIZED)
         if not Assignment.objects.filter(id=Assignment_id).exists():
             return Response({'message':' id does not exists','response_code':400})
         Assignment.objects.get(id=Assignment_id).delete()
@@ -367,7 +372,10 @@ class AssignmentView(APIView):
 
 
 class AssignmentSubmissionView(APIView):
-    
+
+    authentication_classes=[TokenAuthentication]
+    permission_classes=[IsAuthenticated]
+
     def get(self,request):
         user=AssignmentSubmission.objects.all()
         serializer_data=AssignmentSubmissionSerializer(user,many=True).data
@@ -375,7 +383,10 @@ class AssignmentSubmissionView(APIView):
     
     def post(self,request):
         data=request.data
+        if request.user.role != 'student':
+            return Response({'message':'You do not have permission to perform this action'},status=status.HTTP_401_UNAUTHORIZED)
         serializer_data = AssignmentSubmissionSerializer(data=data)
+
         if serializer_data.is_valid():
             serializer_data.save()
             return Response({'message':'Assignment Submitted Successfully','data':serializer_data.data},status=status.HTTP_201_CREATED)
@@ -384,7 +395,8 @@ class AssignmentSubmissionView(APIView):
     def patch(self,request):
         data=request.data
         submission_id= data.get('submission_id')
-       
+        if request.user.role != 'faculty':
+            return Response({'message':'You do not have permission to perform this action'},status=status.HTTP_401_UNAUTHORIZED)
         if not AssignmentSubmission.objects.filter(id=submission_id).exists():
            return Response({'message':'id does not exist'},status=status.HTTP_404_NOT_FOUND)
         else:
@@ -398,15 +410,20 @@ class AssignmentSubmissionView(APIView):
     def delete(self,request):
         data=request.data
         submission_id=data.get('submission_id')
+        if request.user.role != 'faculty':
+            return Response({'message':'You do not have permission to perform this action'},status=status.HTTP_401_UNAUTHORIZED)
         if not AssignmentSubmission.objects.filter(id=submission_id).exists():
             return Response({'message':' id does not exists','response_code':400})
         AssignmentSubmission.objects.get(id=submission_id).delete()
         return Response({'message':'AssignmentSubmission deleted successfully','response_code':200})
-    
+
+
 #### CRUD FOR Attendance ###
 
-
 class AttendanceView(APIView):
+
+    authentication_classes=[TokenAuthentication]
+    permission_classes=[IsAuthenticated]
     
     def get(self,request):
         user=Attendance.objects.all()
@@ -418,15 +435,77 @@ class AttendanceView(APIView):
         today=date.today()
         student=data.get('student')
         subject=data.get('subject')
-
+        
+        if request.user.role != 'faculty':
+            return Response({'message':'You do not have permission to perform this action'},status=status.HTTP_401_UNAUTHORIZED)
         if not StudentProfile.objects.filter(id=student).exists():
             return Response({'message':'Student id does not exists'},status=status.HTTP_404_NOT_FOUND)
-        if student:
-            if Attendance.objects.filter(student=student,date=today,subject=subject).exists():
-                return Response({'message':'You have already marked your attendance'},status=status.HTTP_400_BAD_REQUEST)
-             
-            serializer_data = AttendanceSerializer(data=data)
-            if serializer_data.is_valid():
-                serializer_data.save()
-                return Response({'message':'Attendance registed successfully','data':serializer_data.data},status=status.HTTP_201_CREATED)
-            return Response(serializer_data.errors,status=status.HTTP_400_BAD_REQUEST)
+    
+        if Attendance.objects.filter(student=student,date=today,subject=subject).exists():
+            return Response({'message':'You have already marked your attendance'},status=status.HTTP_400_BAD_REQUEST)
+            
+        serializer_data = AttendanceSerializer(data=data)
+        if serializer_data.is_valid():
+            serializer_data.save()
+            return Response({'message':'Attendance registed successfully','data':serializer_data.data},status=status.HTTP_201_CREATED)
+        return Response(serializer_data.errors,status=status.HTTP_400_BAD_REQUEST)
+    
+class AttendanceListView(APIView):
+    authentication_classes=[TokenAuthentication]
+    permission_classes=[IsAuthenticatedOrReadOnly]
+
+    def get (self,request):
+        attendance=Attendance.objects.all()
+        serializer_data=AttendanceSerializer(attendance,many=True).data
+        return Response({'message':'Attendance get Successfully','data':serializer_data},status=status.HTTP_200_OK)
+    
+
+class UploadResourceView(APIView):
+    authentication_classes=[TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get (self,request):
+        resources=Resources.objects.all()
+        serializer_data=ResourcesSerializer(resources,many=True).data
+        return Response({'message':'Resources get Successfully','data':serializer_data},status=status.HTTP_200_OK)
+    
+    def post(self, request):
+        data=request.data
+        uploaded_by=data.get('uploaded_by')
+
+        if request.user.role != 'faculty':
+            return Response({'message': 'Only faculty can upload resources'}, status=status.HTTP_403_FORBIDDEN)
+        if not Faculty.objects.filter(id=uploaded_by).exists():
+            return Response({'message':'Faculty id does not exists'},status=status.HTTP_404_NOT_FOUND)
+      
+        serializer = ResourcesSerializer(data=data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({'message': 'Resource uploaded successfully', 'data': serializer.data}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def patch(self, request):
+        data=request.data
+        resource_id=data.get('resource_id')
+
+        if request.user.role != 'faculty':
+            return Response({'message': 'Only faculty can upload resources'}, status=status.HTTP_403_FORBIDDEN)
+        if not Resources.objects.filter(id=resource_id).exists():
+            return Response({'message':'Resource id does not exists'},status=status.HTTP_404_NOT_FOUND)
+
+        id=Resources.objects.get(id=resource_id)      
+        serializer = ResourcesSerializer(id,data=data,partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({'message': 'Resource updated successfully', 'data': serializer.data}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def delete(self,request):
+        resource_id=request.data.get('resource_id')
+        if request.user.role != 'faculty':
+            return Response({'message': 'Only faculty can upload resources'}, status=status.HTTP_403_FORBIDDEN)
+        if not Resources.objects.filter(id=resource_id).exists():
+            return Response({'message':'Resource id does not exists'},status=status.HTTP_404_NOT_FOUND)
+        Resources.objects.get(id=resource_id).delete()
+        return Response({'message':'Resource deleted successfully'},status=status.HTTP_200_OK)
+

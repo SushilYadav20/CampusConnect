@@ -13,5 +13,9 @@ urlpatterns = [
     path('assignment-view/',AssignmentView.as_view()),
     path('assignment-submission/',AssignmentSubmissionView.as_view()),
     path('attendance/',AttendanceView.as_view()),
+    path('attendance-list/',AttendanceListView.as_view()),
+    path('upload-resources/',UploadResourceView.as_view()),
+
+
          
 ]
